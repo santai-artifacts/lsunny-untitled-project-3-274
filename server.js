@@ -1,54 +1,28 @@
 const express = require('express');
-const Database = require('better-sqlite3');
 const path = require('path');
 const crypto = require('crypto');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const DB_FILE = path.join(__dirname, 'streakpact.json');
 
-// ── Database ──────────────────────────────────────────────
-const db = new Database('streakpact.db');
+// ── JSON File Database ────────────────────────────────────
+// Schema: { users, habits, completions, friendships }
 
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+function loadDB() {
+  try { return JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); }
+  catch { return { users: [], habits: [], completions: [], friendships: [] }; }
+}
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    token        TEXT UNIQUE NOT NULL,
-    name         TEXT NOT NULL,
-    color        TEXT NOT NULL DEFAULT '#7c6af7',
-    invite_code  TEXT UNIQUE NOT NULL,
-    created_at   TEXT NOT NULL DEFAULT (date('now'))
-  );
+function saveDB() {
+  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+}
 
-  CREATE TABLE IF NOT EXISTS habits (
-    id          TEXT PRIMARY KEY,
-    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    name        TEXT NOT NULL,
-    emoji       TEXT NOT NULL DEFAULT '🎯',
-    freq        TEXT NOT NULL DEFAULT 'daily',
-    created_at  TEXT NOT NULL DEFAULT (date('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS completions (
-    id        INTEGER PRIMARY KEY AUTOINCREMENT,
-    habit_id  TEXT NOT NULL REFERENCES habits(id) ON DELETE CASCADE,
-    user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    date      TEXT NOT NULL,
-    UNIQUE(habit_id, date)
-  );
-
-  CREATE TABLE IF NOT EXISTS friendships (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    friend_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(user_id, friend_id)
-  );
-`);
+let db = loadDB();
 
 // ── Helpers ───────────────────────────────────────────────
+
 function genInviteCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let c = '';
@@ -64,6 +38,15 @@ function todayStr() {
   return new Date().toISOString().split('T')[0];
 }
 
+function buildCompMap(completions) {
+  const map = {};
+  for (const c of completions) {
+    if (!map[c.date]) map[c.date] = [];
+    map[c.date].push(c.habit_id);
+  }
+  return map;
+}
+
 function calcStreak(habitId, compMap) {
   let streak = 0;
   const d = new Date();
@@ -72,7 +55,6 @@ function calcStreak(habitId, compMap) {
     const key = d.toISOString().split('T')[0];
     const done = (compMap[key] || []).includes(habitId);
     if (!done) {
-      // Today not done yet — still in progress, check yesterday
       if (key === today && streak === 0) { d.setDate(d.getDate() - 1); continue; }
       break;
     }
@@ -82,15 +64,6 @@ function calcStreak(habitId, compMap) {
   return streak;
 }
 
-function buildCompMap(rows) {
-  const map = {};
-  for (const r of rows) {
-    if (!map[r.date]) map[r.date] = [];
-    map[r.date].push(r.habit_id);
-  }
-  return map;
-}
-
 // ── Middleware ────────────────────────────────────────────
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -98,7 +71,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 function auth(req, res, next) {
   const token = req.headers['x-user-token'];
   if (!token) return res.status(401).json({ error: 'Missing token' });
-  const user = db.prepare('SELECT * FROM users WHERE token = ?').get(token);
+  const user = db.users.find(u => u.token === token);
   if (!user) return res.status(401).json({ error: 'Unknown token — please set up your profile' });
   req.user = user;
   next();
@@ -106,101 +79,103 @@ function auth(req, res, next) {
 
 // ── Profile ───────────────────────────────────────────────
 
-// Upsert profile (register or update)
 app.post('/api/profile', (req, res) => {
   const { token, name, color } = req.body;
   if (!token || !name) return res.status(400).json({ error: 'token and name required' });
 
-  const existing = db.prepare('SELECT * FROM users WHERE token = ?').get(token);
-  if (existing) {
-    db.prepare('UPDATE users SET name = ?, color = ? WHERE token = ?')
-      .run(name.trim(), color || existing.color, token);
+  let user = db.users.find(u => u.token === token);
+  if (user) {
+    user.name = name.trim();
+    if (color) user.color = color;
   } else {
-    let code = genInviteCode();
-    while (db.prepare('SELECT id FROM users WHERE invite_code = ?').get(code)) code = genInviteCode();
-    db.prepare('INSERT INTO users (token, name, color, invite_code) VALUES (?, ?, ?, ?)')
-      .run(token, name.trim(), color || '#7c6af7', code);
+    let invite_code = genInviteCode();
+    while (db.users.find(u => u.invite_code === invite_code)) invite_code = genInviteCode();
+    user = { id: uid(), token, name: name.trim(), color: color || '#7c6af7', invite_code, created_at: todayStr() };
+    db.users.push(user);
   }
-  res.json(db.prepare('SELECT id, name, color, invite_code, created_at FROM users WHERE token = ?').get(token));
+  saveDB();
+  const { token: _, ...safe } = user;
+  res.json(safe);
 });
 
 app.get('/api/profile', auth, (req, res) => {
-  const { id, name, color, invite_code, created_at } = req.user;
-  res.json({ id, name, color, invite_code, created_at });
+  const { token: _, ...safe } = req.user;
+  res.json(safe);
 });
 
 // ── Habits ────────────────────────────────────────────────
+
 app.get('/api/habits', auth, (req, res) => {
-  res.json(db.prepare('SELECT * FROM habits WHERE user_id = ? ORDER BY created_at').all(req.user.id));
+  res.json(db.habits.filter(h => h.user_id === req.user.id));
 });
 
 app.post('/api/habits', auth, (req, res) => {
   const { name, emoji, freq } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: 'name required' });
-  const id = uid();
-  db.prepare('INSERT INTO habits (id, user_id, name, emoji, freq) VALUES (?, ?, ?, ?, ?)')
-    .run(id, req.user.id, name.trim(), emoji || '🎯', freq || 'daily');
-  res.status(201).json(db.prepare('SELECT * FROM habits WHERE id = ?').get(id));
+  const habit = { id: uid(), user_id: req.user.id, name: name.trim(), emoji: emoji || '🎯', freq: freq || 'daily', created_at: todayStr() };
+  db.habits.push(habit);
+  saveDB();
+  res.status(201).json(habit);
 });
 
 app.delete('/api/habits/:id', auth, (req, res) => {
-  const habit = db.prepare('SELECT * FROM habits WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
-  if (!habit) return res.status(404).json({ error: 'Not found' });
-  db.prepare('DELETE FROM habits WHERE id = ?').run(req.params.id);
+  const idx = db.habits.findIndex(h => h.id === req.params.id && h.user_id === req.user.id);
+  if (idx === -1) return res.status(404).json({ error: 'Not found' });
+  db.habits.splice(idx, 1);
+  db.completions = db.completions.filter(c => c.habit_id !== req.params.id);
+  saveDB();
   res.json({ ok: true });
 });
 
 // ── Completions ───────────────────────────────────────────
+
 app.get('/api/completions', auth, (req, res) => {
-  const rows = db.prepare('SELECT habit_id, date FROM completions WHERE user_id = ?').all(req.user.id);
-  res.json(buildCompMap(rows));
+  res.json(buildCompMap(db.completions.filter(c => c.user_id === req.user.id)));
 });
 
 app.post('/api/completions/toggle', auth, (req, res) => {
   const { habitId } = req.body;
   if (!habitId) return res.status(400).json({ error: 'habitId required' });
-
-  const habit = db.prepare('SELECT * FROM habits WHERE id = ? AND user_id = ?').get(habitId, req.user.id);
-  if (!habit) return res.status(404).json({ error: 'Habit not found' });
+  if (!db.habits.find(h => h.id === habitId && h.user_id === req.user.id))
+    return res.status(404).json({ error: 'Habit not found' });
 
   const date = todayStr();
-  const existing = db.prepare('SELECT id FROM completions WHERE habit_id = ? AND date = ?').get(habitId, date);
-  if (existing) {
-    db.prepare('DELETE FROM completions WHERE habit_id = ? AND date = ?').run(habitId, date);
-    res.json({ done: false });
-  } else {
-    db.prepare('INSERT INTO completions (habit_id, user_id, date) VALUES (?, ?, ?)').run(habitId, req.user.id, date);
-    res.json({ done: true });
+  const idx = db.completions.findIndex(c => c.habit_id === habitId && c.date === date);
+  if (idx !== -1) {
+    db.completions.splice(idx, 1);
+    saveDB();
+    return res.json({ done: false });
   }
+  db.completions.push({ habit_id: habitId, user_id: req.user.id, date });
+  saveDB();
+  res.json({ done: true });
 });
 
 // ── Friends ───────────────────────────────────────────────
+
 app.get('/api/friends', auth, (req, res) => {
-  const friendUsers = db.prepare(`
-    SELECT u.id, u.name, u.color, u.invite_code
-    FROM friendships f
-    JOIN users u ON u.id = f.friend_id
-    WHERE f.user_id = ?
-    ORDER BY f.created_at
-  `).all(req.user.id);
+  const friendIds = db.friendships
+    .filter(f => f.user_id === req.user.id)
+    .map(f => f.friend_id);
 
-  const result = friendUsers.map(friend => {
-    const habits = db.prepare('SELECT * FROM habits WHERE user_id = ? ORDER BY created_at').all(friend.id);
-    const compRows = db.prepare('SELECT habit_id, date FROM completions WHERE user_id = ?').all(friend.id);
-    const compMap = buildCompMap(compRows);
+  const result = friendIds.map(fid => {
+    const friend = db.users.find(u => u.id === fid);
+    if (!friend) return null;
+    const habits = db.habits.filter(h => h.user_id === fid);
+    const compMap = buildCompMap(db.completions.filter(c => c.user_id === fid));
     const today = todayStr();
-
     return {
-      ...friend,
+      id: friend.id,
+      name: friend.name,
+      color: friend.color,
+      invite_code: friend.invite_code,
       habits: habits.map(h => ({
-        id: h.id,
-        name: h.name,
-        emoji: h.emoji,
+        id: h.id, name: h.name, emoji: h.emoji,
         streak: calcStreak(h.id, compMap),
         doneToday: (compMap[today] || []).includes(h.id)
       }))
     };
-  });
+  }).filter(Boolean);
 
   res.json(result);
 });
@@ -209,40 +184,44 @@ app.post('/api/friends', auth, (req, res) => {
   const { code } = req.body;
   if (!code) return res.status(400).json({ error: 'code required' });
 
-  const friend = db.prepare('SELECT * FROM users WHERE invite_code = ?').get(code.toUpperCase());
+  const friend = db.users.find(u => u.invite_code === code.toUpperCase());
   if (!friend) return res.status(404).json({ error: 'No user found with that invite code' });
   if (friend.id === req.user.id) return res.status(400).json({ error: 'You cannot add yourself' });
+  if (db.friendships.find(f => f.user_id === req.user.id && f.friend_id === friend.id))
+    return res.status(400).json({ error: 'Already friends with this person' });
 
-  const existing = db.prepare('SELECT id FROM friendships WHERE user_id = ? AND friend_id = ?')
-    .get(req.user.id, friend.id);
-  if (existing) return res.status(400).json({ error: 'Already friends with this person' });
+  // Mutual friendship
+  db.friendships.push({ user_id: req.user.id, friend_id: friend.id });
+  if (!db.friendships.find(f => f.user_id === friend.id && f.friend_id === req.user.id))
+    db.friendships.push({ user_id: friend.id, friend_id: req.user.id });
 
-  // Add both directions so it's mutual
-  db.prepare('INSERT OR IGNORE INTO friendships (user_id, friend_id) VALUES (?, ?)').run(req.user.id, friend.id);
-  db.prepare('INSERT OR IGNORE INTO friendships (user_id, friend_id) VALUES (?, ?)').run(friend.id, req.user.id);
-
+  saveDB();
   res.status(201).json({ ok: true, name: friend.name });
 });
 
 app.delete('/api/friends/:code', auth, (req, res) => {
-  const friend = db.prepare('SELECT * FROM users WHERE invite_code = ?').get(req.params.code);
+  const friend = db.users.find(u => u.invite_code === req.params.code);
   if (!friend) return res.status(404).json({ error: 'Not found' });
-  db.prepare('DELETE FROM friendships WHERE user_id = ? AND friend_id = ?').run(req.user.id, friend.id);
-  db.prepare('DELETE FROM friendships WHERE user_id = ? AND friend_id = ?').run(friend.id, req.user.id);
+  db.friendships = db.friendships.filter(
+    f => !(f.user_id === req.user.id && f.friend_id === friend.id) &&
+         !(f.user_id === friend.id && f.friend_id === req.user.id)
+  );
+  saveDB();
   res.json({ ok: true });
 });
 
 // ── Stats ─────────────────────────────────────────────────
+
 app.get('/api/stats', auth, (req, res) => {
-  const habits = db.prepare('SELECT * FROM habits WHERE user_id = ?').all(req.user.id);
-  const compRows = db.prepare('SELECT habit_id, date FROM completions WHERE user_id = ?').all(req.user.id);
-  const compMap = buildCompMap(compRows);
+  const habits = db.habits.filter(h => h.user_id === req.user.id);
+  const userComps = db.completions.filter(c => c.user_id === req.user.id);
+  const compMap = buildCompMap(userComps);
   const allDays = Object.keys(compMap);
 
   const habitsWithStats = habits.map(h => ({
     ...h,
     streak: calcStreak(h.id, compMap),
-    total: compRows.filter(c => c.habit_id === h.id).length
+    total: userComps.filter(c => c.habit_id === h.id).length
   }));
 
   const perfectDays = allDays.filter(d =>
@@ -252,11 +231,9 @@ app.get('/api/stats', auth, (req, res) => {
   res.json({
     habits: habitsWithStats,
     completions: compMap,
-    totalCheckins: compRows.length,
+    totalCheckins: userComps.length,
     perfectDays,
-    longestStreak: habitsWithStats.length
-      ? Math.max(...habitsWithStats.map(h => h.streak), 0)
-      : 0
+    longestStreak: habitsWithStats.length ? Math.max(...habitsWithStats.map(h => h.streak), 0) : 0
   });
 });
 
