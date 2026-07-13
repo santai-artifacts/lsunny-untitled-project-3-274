@@ -1,0 +1,14 @@
+{
+  "name": "streakpact",
+  "version": "1.0.0",
+  "description": "Social habit tracker with real-time friends support",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.4.3",
+    "express": "^4.18.2"
+  }
+}

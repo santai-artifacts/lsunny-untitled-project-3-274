@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StreakPact</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f0f13;
+    --surface: #1a1a24;
+    --surface2: #22222f;
+    --border: #2e2e3e;
+    --text: #e8e8f0;
+    --muted: #7a7a96;
+    --accent: #7c6af7;
+    --accent2: #a78bfa;
+    --green: #34d399;
+    --red: #f87171;
+    --yellow: #fbbf24;
+    --radius: 12px;
+  }
+
+  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  .app { display: flex; flex-direction: column; min-height: 100vh; }
+
+  /* Header */
+  header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0 24px; height: 64px; display: flex; align-items: center;
+    justify-content: space-between; position: sticky; top: 0; z-index: 100;
+  }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.1rem; }
+  .logo-icon { width: 32px; height: 32px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 8px; display: grid; place-items: center; font-size: 16px; }
+
+  /* Main */
+  main { flex: 1; max-width: 960px; width: 100%; margin: 0 auto; padding: 32px 24px; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 4px; background: var(--surface); border-radius: var(--radius); padding: 4px; width: fit-content; margin-bottom: 28px; }
+  .tab { padding: 8px 20px; border-radius: 9px; border: none; background: transparent; color: var(--muted); font-size: .875rem; font-weight: 500; cursor: pointer; transition: all .15s; font-family: inherit; }
+  .tab.active { background: var(--accent); color: #fff; }
+  .tab:hover:not(.active) { color: var(--text); }
+
+  /* Views */
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* Section header */
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .section-title { font-size: 1.25rem; font-weight: 700; }
+
+  /* Buttons */
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 18px; border-radius: 8px; border: none; font-size: .875rem; font-weight: 600; cursor: pointer; transition: all .15s; font-family: inherit; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #6b58e8; }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .btn-ghost:hover { color: var(--text); border-color: var(--muted); }
+  .btn-danger { background: transparent; color: var(--red); border: 1px solid transparent; }
+  .btn-danger:hover { background: rgba(248,113,113,.1); }
+  .btn-sm { padding: 5px 12px; font-size: .8rem; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* Cards */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+
+  /* Habit list */
+  .habits-list { display: flex; flex-direction: column; gap: 12px; }
+  .habit-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px 20px; display: flex; align-items: center; gap: 16px; transition: border-color .15s;
+  }
+  .habit-card:hover { border-color: var(--accent); }
+
+  .habit-check {
+    width: 36px; height: 36px; border-radius: 10px; border: 2px solid var(--border);
+    background: transparent; cursor: pointer; transition: all .15s; flex-shrink: 0;
+    display: grid; place-items: center; font-size: 18px;
+  }
+  .habit-check.done { background: var(--green); border-color: var(--green); }
+  .habit-check.done::after { content: '✓'; color: #0f0f13; font-weight: 800; }
+
+  .habit-info { flex: 1; min-width: 0; }
+  .habit-name { font-weight: 600; font-size: .95rem; }
+  .habit-meta { font-size: .8rem; color: var(--muted); margin-top: 2px; display: flex; gap: 12px; flex-wrap: wrap; }
+
+  .streak-badge { display: inline-flex; align-items: center; gap: 4px; background: rgba(251,191,36,.12); color: var(--yellow); border-radius: 6px; padding: 2px 8px; font-size: .75rem; font-weight: 600; }
+
+  .habit-actions { display: flex; gap: 4px; }
+
+  /* Week dots */
+  .week-dots { display: flex; gap: 4px; align-items: center; }
+  .week-dot { width: 10px; height: 10px; border-radius: 3px; background: var(--border); }
+  .week-dot.done { background: var(--green); }
+  .week-dot.today { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* Empty state */
+  .empty { text-align: center; padding: 64px 24px; color: var(--muted); }
+  .empty-icon { font-size: 48px; margin-bottom: 16px; }
+  .empty h3 { font-size: 1.1rem; color: var(--text); margin-bottom: 8px; }
+  .empty p { font-size: .875rem; }
+
+  /* Friends */
+  .friends-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+  .friend-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+  .friend-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .avatar { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font-size: 1.1rem; font-weight: 700; flex-shrink: 0; }
+  .friend-name { font-weight: 600; }
+  .friend-handle { font-size: .8rem; color: var(--muted); }
+  .friend-habits { display: flex; flex-direction: column; gap: 8px; }
+  .friend-habit-row { display: flex; align-items: center; justify-content: space-between; font-size: .85rem; }
+  .friend-habit-name { color: var(--muted); }
+  .friend-habit-streak { display: flex; align-items: center; gap: 4px; color: var(--yellow); font-weight: 600; font-size: .8rem; }
+  .done-pill { background: rgba(52,211,153,.12); color: var(--green); border-radius: 6px; padding: 1px 7px; font-size: .72rem; font-weight: 600; }
+
+  /* Stats */
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; margin-bottom: 28px; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+  .stat-value { font-size: 2rem; font-weight: 700; line-height: 1; margin-bottom: 4px; }
+  .stat-label { font-size: .8rem; color: var(--muted); font-weight: 500; }
+
+  /* Heatmap */
+  .heatmap-wrap { overflow-x: auto; padding-bottom: 8px; }
+  .heatmap { display: flex; gap: 3px; }
+  .heatmap-col { display: flex; flex-direction: column; gap: 3px; }
+  .heatmap-cell { width: 14px; height: 14px; border-radius: 3px; background: var(--border); transition: transform .1s; }
+  .heatmap-cell:hover { transform: scale(1.3); }
+  .heatmap-cell.l1 { background: #2d6a4f; }
+  .heatmap-cell.l2 { background: #40916c; }
+  .heatmap-cell.l3 { background: #52b788; }
+  .heatmap-cell.l4 { background: var(--green); }
+  .heatmap-months { display: flex; gap: 3px; margin-bottom: 4px; font-size: .7rem; color: var(--muted); }
+
+  /* Modal */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center; z-index: 200; padding: 24px; opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+  .modal { background: var(--surface2); border: 1px solid var(--border); border-radius: 16px; padding: 28px; width: 100%; max-width: 440px; transform: translateY(16px); transition: transform .2s; }
+  .modal-overlay.open .modal { transform: translateY(0); }
+  .modal-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 20px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
+
+  /* Form */
+  .form-group { margin-bottom: 16px; }
+  label { display: block; font-size: .8rem; font-weight: 600; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .05em; }
+  input, select, textarea { width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-family: inherit; font-size: .9rem; transition: border-color .15s; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+
+  .emoji-picker { display: flex; gap: 8px; flex-wrap: wrap; }
+  .emoji-opt { width: 40px; height: 40px; border-radius: 8px; border: 2px solid var(--border); background: var(--bg); font-size: 20px; cursor: pointer; transition: all .1s; display: grid; place-items: center; }
+  .emoji-opt.selected { border-color: var(--accent); background: rgba(124,106,247,.15); }
+
+  /* User pill */
+  .user-pill { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 20px; background: var(--surface2); border: 1px solid var(--border); font-size: .85rem; font-weight: 600; cursor: pointer; transition: border-color .15s; }
+  .user-pill:hover { border-color: var(--accent); }
+  .avatar-sm { width: 24px; height: 24px; border-radius: 50%; font-size: 12px; display: grid; place-items: center; font-weight: 700; }
+
+  /* Invite banner */
+  .invite-banner { background: linear-gradient(135deg, rgba(124,106,247,.15), rgba(167,139,250,.1)); border: 1px solid rgba(124,106,247,.3); border-radius: var(--radius); padding: 20px 24px; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .invite-text h3 { font-size: .95rem; font-weight: 600; margin-bottom: 2px; }
+  .invite-text p { font-size: .82rem; color: var(--muted); }
+  .invite-code { font-family: monospace; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; font-size: .9rem; letter-spacing: .1em; }
+
+  /* Toast */
+  .toast-wrap { position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 8px; z-index: 999; }
+  .toast { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; font-size: .875rem; font-weight: 500; display: flex; align-items: center; gap: 8px; transform: translateX(120%); transition: transform .25s ease; max-width: 300px; }
+  .toast.show { transform: translateX(0); }
+  .toast.success { border-left: 3px solid var(--green); }
+  .toast.error { border-left: 3px solid var(--red); }
+
+  /* Loading spinner */
+  .spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loading-center { display: flex; justify-content: center; align-items: center; padding: 48px; }
+
+  /* Color picker */
+  .color-opt { width: 32px; height: 32px; border-radius: 50%; cursor: pointer; border: 3px solid transparent; transition: border-color .15s; }
+  .color-opt.selected { border-color: #fff; }
+
+  @media (max-width: 600px) {
+    header { padding: 0 16px; }
+    main { padding: 24px 16px; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .invite-banner { flex-direction: column; align-items: flex-start; }
+    .friends-grid { grid-template-columns: 1fr; }
+  }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">🔥</div>
+    StreakPact
+  </div>
+  <div id="userPill" class="user-pill" onclick="openProfileModal()">
+    <div class="avatar-sm" id="headerAvatar" style="background:var(--accent)">?</div>
+    <span id="headerName">Set up profile</span>
+  </div>
+</header>
+
+<main>
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('today')">Today</button>
+    <button class="tab" onclick="switchTab('friends')">Friends</button>
+    <button class="tab" onclick="switchTab('stats')">Stats</button>
+  </div>
+
+  <!-- TODAY -->
+  <div id="view-today" class="view active">
+    <div class="section-header">
+      <div>
+        <div class="section-title">Today</div>
+        <div id="todayDate" style="font-size:.82rem;color:var(--muted);margin-top:2px"></div>
+      </div>
+      <button class="btn btn-primary" onclick="openAddModal()">+ Add Habit</button>
+    </div>
+
+    <div class="card" id="progressBar" style="margin-bottom:20px;display:flex;align-items:center;gap:20px;padding:16px 20px">
+      <svg width="56" height="56" viewBox="0 0 56 56">
+        <circle cx="28" cy="28" r="23" fill="none" stroke="var(--border)" stroke-width="5"/>
+        <circle id="progressCircle" cx="28" cy="28" r="23" fill="none" stroke="var(--accent)" stroke-width="5"
+          stroke-linecap="round" stroke-dasharray="144.5" stroke-dashoffset="144.5"
+          transform="rotate(-90 28 28)" style="transition:stroke-dashoffset .4s ease"/>
+      </svg>
+      <div>
+        <div id="progressText" style="font-size:1.4rem;font-weight:700">—</div>
+        <div style="font-size:.82rem;color:var(--muted)">habits completed today</div>
+      </div>
+    </div>
+
+    <div id="habitsList" class="habits-list">
+      <div class="loading-center"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+  <!-- FRIENDS -->
+  <div id="view-friends" class="view">
+    <div class="section-header">
+      <div class="section-title">Friends</div>
+      <button class="btn btn-primary" onclick="openAddFriendModal()">+ Add Friend</button>
+    </div>
+
+    <div class="invite-banner">
+      <div class="invite-text">
+        <h3>Your invite code</h3>
+        <p>Share it — friends enter it to see your real habit streaks</p>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="invite-code" id="myCode">—</span>
+        <button class="btn btn-ghost btn-sm" onclick="copyCode()">Copy</button>
+      </div>
+    </div>
+
+    <div id="friendsList" class="friends-grid">
+      <div class="loading-center" style="grid-column:1/-1"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+  <!-- STATS -->
+  <div id="view-stats" class="view">
+    <div class="section-title" style="margin-bottom:20px">Your Stats</div>
+    <div class="stats-grid" id="statsGrid"></div>
+    <div class="card" style="margin-bottom:16px">
+      <div style="font-weight:600;margin-bottom:16px">Completion Heatmap (last 16 weeks)</div>
+      <div class="heatmap-months" id="heatmapMonths"></div>
+      <div class="heatmap-wrap"><div class="heatmap" id="heatmap"></div></div>
+    </div>
+    <div class="card">
+      <div style="font-weight:600;margin-bottom:16px">Per-Habit Streaks</div>
+      <div id="habitStatsList"><div class="loading-center"><div class="spinner"></div></div></div>
+    </div>
+  </div>
+</main>
+</div>
+
+<!-- ADD HABIT MODAL -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <div class="modal-title">New Habit</div>
+    <div class="form-group">
+      <label>Habit Name</label>
+      <input id="habitNameInput" placeholder="e.g. Morning run" maxlength="40"/>
+    </div>
+    <div class="form-group">
+      <label>Icon</label>
+      <div class="emoji-picker" id="emojiPicker"></div>
+    </div>
+    <div class="form-group">
+      <label>Frequency</label>
+      <select id="habitFreq">
+        <option value="daily">Daily</option>
+        <option value="weekdays">Weekdays only</option>
+        <option value="weekends">Weekends only</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('addModal')">Cancel</button>
+      <button class="btn btn-primary" id="saveHabitBtn" onclick="saveHabit()">Save Habit</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD FRIEND MODAL -->
+<div class="modal-overlay" id="addFriendModal">
+  <div class="modal">
+    <div class="modal-title">Add Friend</div>
+    <div class="form-group">
+      <label>Friend's Invite Code</label>
+      <input id="friendCodeInput" placeholder="e.g. SP-AB3X" style="text-transform:uppercase"/>
+    </div>
+    <div style="font-size:.82rem;color:var(--muted);margin-top:-8px;margin-bottom:4px">
+      Ask your friend to share their invite code from their profile. Adding is mutual — they'll see you too.
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('addFriendModal')">Cancel</button>
+      <button class="btn btn-primary" id="addFriendBtn" onclick="addFriend()">Add Friend</button>
+    </div>
+  </div>
+</div>
+
+<!-- PROFILE MODAL -->
+<div class="modal-overlay" id="profileModal">
+  <div class="modal">
+    <div class="modal-title" id="profileModalTitle">Set Up Your Profile</div>
+    <div class="form-group">
+      <label>Display Name</label>
+      <input id="profileName" placeholder="Your name" maxlength="30"/>
+    </div>
+    <div class="form-group">
+      <label>Avatar Color</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap" id="colorPicker"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="profileCancelBtn" onclick="closeModal('profileModal')" style="display:none">Cancel</button>
+      <button class="btn btn-primary" id="saveProfileBtn" onclick="saveProfile()">Save Profile</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script>
+/* ══════════════════════════════════════════
+   TOKEN & API LAYER
+   ══════════════════════════════════════════ */
+
+const TOKEN_KEY = 'streakpact_token_v2';
+
+function getToken() {
+  let t = localStorage.getItem(TOKEN_KEY);
+  if (!t) {
+    const arr = new Uint8Array(16);
+    crypto.getRandomValues(arr);
+    t = Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+    localStorage.setItem(TOKEN_KEY, t);
+  }
+  return t;
+}
+
+async function api(method, endpoint, body) {
+  const opts = {
+    method,
+    headers: { 'Content-Type': 'application/json', 'x-user-token': getToken() }
+  };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  const res = await fetch(endpoint, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+/* ══════════════════════════════════════════
+   APP STATE
+   ══════════════════════════════════════════ */
+
+let profile = null;
+let habits = [];
+let completions = {};  // { date: [habitId, ...] }
+let selectedEmoji = '🏃';
+let selectedColor = '#7c6af7';
+
+const EMOJIS = ['🏃','💪','🧘','📚','💧','🥗','😴','🎯','🖊️','🎸','🌿','🧹','💊','🐕','🚴'];
+const COLORS  = ['#7c6af7','#34d399','#f87171','#fbbf24','#60a5fa','#f472b6','#a78bfa','#fb923c'];
+const MONTHS  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+/* ══════════════════════════════════════════
+   UTILITIES
+   ══════════════════════════════════════════ */
+
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function dateLabel(s) {
+  return new Date(s + 'T12:00:00').toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
+}
+
+function isCompletedToday(id) {
+  return (completions[todayStr()] || []).includes(id);
+}
+
+function calcStreakLocal(habitId) {
+  let streak = 0;
+  const d = new Date();
+  const today = todayStr();
+  while (true) {
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const done = (completions[key] || []).includes(habitId);
+    if (!done) {
+      if (key === today && streak === 0) { d.setDate(d.getDate() - 1); continue; }
+      break;
+    }
+    streak++;
+    d.setDate(d.getDate() - 1);
+  }
+  return streak;
+}
+
+function getLast7(habitId) {
+  const days = [];
+  const d = new Date();
+  for (let i = 6; i >= 0; i--) {
+    const dd = new Date(d); dd.setDate(d.getDate() - i);
+    const key = `${dd.getFullYear()}-${String(dd.getMonth()+1).padStart(2,'0')}-${String(dd.getDate()).padStart(2,'0')}`;
+    days.push({ key, isToday: i === 0, done: (completions[key] || []).includes(habitId) });
+  }
+  return days;
+}
+
+/* ══════════════════════════════════════════
+   TOAST
+   ══════════════════════════════════════════ */
+
+function toast(msg, type = 'success') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = (type === 'success' ? '✓ ' : '✗ ') + msg;
+  document.getElementById('toastWrap').appendChild(el);
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('show')));
+  setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 300); }, 2800);
+}
+
+/* ══════════════════════════════════════════
+   TABS
+   ══════════════════════════════════════════ */
+
+let activeTab = 'today';
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    t.classList.toggle('active', ['today','friends','stats'][i] === name);
+  });
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById(`view-${name}`).classList.add('active');
+  activeTab = name;
+  if (name === 'today') loadToday();
+  if (name === 'friends') loadFriends();
+  if (name === 'stats') loadStats();
+}
+
+/* ══════════════════════════════════════════
+   TODAY VIEW
+   ══════════════════════════════════════════ */
+
+async function loadToday() {
+  document.getElementById('todayDate').textContent = dateLabel(todayStr());
+
+  if (!profile) return;
+
+  try {
+    [habits, completions] = await Promise.all([
+      api('GET', '/api/habits'),
+      api('GET', '/api/completions')
+    ]);
+    renderToday();
+  } catch (e) {
+    document.getElementById('habitsList').innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><h3>Could not load habits</h3><p>${e.message}</p></div>`;
+  }
+}
+
+function renderToday() {
+  const doneCount = habits.filter(h => isCompletedToday(h.id)).length;
+  const pct = habits.length ? doneCount / habits.length : 0;
+  document.getElementById('progressCircle').style.strokeDashoffset = 144.5 - 144.5 * pct;
+  document.getElementById('progressText').textContent = `${doneCount} / ${habits.length}`;
+
+  const list = document.getElementById('habitsList');
+  if (!habits.length) {
+    list.innerHTML = `<div class="empty"><div class="empty-icon">🌱</div><h3>No habits yet</h3><p>Add your first habit to get started</p></div>`;
+    return;
+  }
+
+  list.innerHTML = habits.map(h => {
+    const done = isCompletedToday(h.id);
+    const streak = calcStreakLocal(h.id);
+    const dots = getLast7(h.id).map(d =>
+      `<div class="week-dot${d.done ? ' done' : ''}${d.isToday ? ' today' : ''}" title="${d.key}"></div>`
+    ).join('');
+    return `
+    <div class="habit-card">
+      <button class="habit-check${done ? ' done' : ''}" onclick="toggleHabit('${h.id}')" aria-label="Toggle ${h.name}"></button>
+      <div class="habit-info">
+        <div class="habit-name">${h.emoji} ${h.name}</div>
+        <div class="habit-meta">
+          ${streak > 0 ? `<span class="streak-badge">🔥 ${streak} day streak</span>` : '<span style="color:var(--muted);font-size:.78rem">Start your streak!</span>'}
+          <div class="week-dots">${dots}</div>
+        </div>
+      </div>
+      <div class="habit-actions">
+        <button class="btn btn-danger btn-sm" style="padding:5px 8px" onclick="deleteHabit('${h.id}', '${h.name.replace(/'/g,"\\'")}')">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function toggleHabit(id) {
+  // Optimistic update
+  const key = todayStr();
+  if (!completions[key]) completions[key] = [];
+  const idx = completions[key].indexOf(id);
+  if (idx === -1) completions[key].push(id);
+  else completions[key].splice(idx, 1);
+  renderToday();
+
+  try {
+    await api('POST', '/api/completions/toggle', { habitId: id });
+  } catch (e) {
+    // Revert
+    if (idx === -1) completions[key] = completions[key].filter(i => i !== id);
+    else completions[key].push(id);
+    renderToday();
+    toast(e.message, 'error');
+  }
+}
+
+async function deleteHabit(id, name) {
+  if (!confirm(`Delete "${name}"?`)) return;
+  try {
+    await api('DELETE', `/api/habits/${id}`);
+    habits = habits.filter(h => h.id !== id);
+    Object.keys(completions).forEach(k => { completions[k] = completions[k].filter(i => i !== id); });
+    renderToday();
+    toast('Habit deleted');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+/* ══════════════════════════════════════════
+   ADD HABIT MODAL
+   ══════════════════════════════════════════ */
+
+function openAddModal() {
+  selectedEmoji = EMOJIS[0];
+  document.getElementById('habitNameInput').value = '';
+  document.getElementById('habitFreq').value = 'daily';
+  document.getElementById('emojiPicker').innerHTML = EMOJIS.map((e, i) =>
+    `<button class="emoji-opt${i===0?' selected':''}" onclick="selectEmoji(this,'${e}')">${e}</button>`
+  ).join('');
+  openModal('addModal');
+  setTimeout(() => document.getElementById('habitNameInput').focus(), 200);
+}
+
+function selectEmoji(el, emoji) {
+  document.querySelectorAll('.emoji-opt').forEach(b => b.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedEmoji = emoji;
+}
+
+async function saveHabit() {
+  const name = document.getElementById('habitNameInput').value.trim();
+  if (!name) { toast('Please enter a habit name', 'error'); return; }
+
+  const btn = document.getElementById('saveHabitBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const habit = await api('POST', '/api/habits', {
+      name, emoji: selectedEmoji, freq: document.getElementById('habitFreq').value
+    });
+    habits.push(habit);
+    closeModal('addModal');
+    renderToday();
+    toast(`"${name}" added!`);
+  } catch (e) { toast(e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'Save Habit'; }
+}
+
+/* ══════════════════════════════════════════
+   FRIENDS VIEW
+   ══════════════════════════════════════════ */
+
+async function loadFriends() {
+  if (profile) {
+    document.getElementById('myCode').textContent = profile.invite_code || '—';
+  }
+
+  const list = document.getElementById('friendsList');
+  list.innerHTML = '<div class="loading-center" style="grid-column:1/-1"><div class="spinner"></div></div>';
+
+  try {
+    const friends = await api('GET', '/api/friends');
+    if (!friends.length) {
+      list.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="empty-icon">👥</div><h3>No friends yet</h3><p>Share your invite code or enter a friend's code to connect</p></div>`;
+      return;
+    }
+    list.innerHTML = friends.map(f => {
+      const initials = f.name.slice(0,2).toUpperCase();
+      const habitsHTML = f.habits.length
+        ? f.habits.slice(0,4).map(h => `
+          <div class="friend-habit-row">
+            <span class="friend-habit-name">${h.emoji} ${h.name}</span>
+            <div style="display:flex;align-items:center;gap:6px">
+              ${h.doneToday ? '<span class="done-pill">✓ today</span>' : ''}
+              <span class="friend-habit-streak">🔥 ${h.streak}d</span>
+            </div>
+          </div>`).join('')
+        : '<div style="font-size:.82rem;color:var(--muted)">No habits yet</div>';
+      return `
+      <div class="friend-card">
+        <div class="friend-header">
+          <div class="avatar" style="background:${f.color}">${initials}</div>
+          <div>
+            <div class="friend-name">${f.name}</div>
+            <div class="friend-handle">${f.invite_code}</div>
+          </div>
+        </div>
+        <div class="friend-habits">${habitsHTML}</div>
+        <div style="margin-top:14px;display:flex;justify-content:flex-end">
+          <button class="btn btn-danger btn-sm" onclick="removeFriend('${f.invite_code}', '${f.name.replace(/'/g,"\\'")}')">Remove</button>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    list.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="empty-icon">⚠️</div><h3>Could not load friends</h3><p>${e.message}</p></div>`;
+  }
+}
+
+function openAddFriendModal() {
+  document.getElementById('friendCodeInput').value = '';
+  openModal('addFriendModal');
+  setTimeout(() => document.getElementById('friendCodeInput').focus(), 200);
+}
+
+async function addFriend() {
+  const code = document.getElementById('friendCodeInput').value.trim();
+  if (!code) { toast('Enter an invite code', 'error'); return; }
+
+  const btn = document.getElementById('addFriendBtn');
+  btn.disabled = true; btn.textContent = 'Adding…';
+  try {
+    const res = await api('POST', '/api/friends', { code });
+    closeModal('addFriendModal');
+    toast(`${res.name} added!`);
+    loadFriends();
+  } catch (e) { toast(e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'Add Friend'; }
+}
+
+async function removeFriend(code, name) {
+  if (!confirm(`Remove ${name}?`)) return;
+  try {
+    await api('DELETE', `/api/friends/${code}`);
+    toast(`${name} removed`);
+    loadFriends();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function copyCode() {
+  const code = document.getElementById('myCode').textContent;
+  try {
+    await navigator.clipboard.writeText(code);
+    toast('Invite code copied!');
+  } catch { toast('Copy failed', 'error'); }
+}
+
+/* ══════════════════════════════════════════
+   STATS VIEW
+   ══════════════════════════════════════════ */
+
+async function loadStats() {
+  const hsl = document.getElementById('habitStatsList');
+  hsl.innerHTML = '<div class="loading-center"><div class="spinner"></div></div>';
+  document.getElementById('statsGrid').innerHTML = '';
+
+  try {
+    const stats = await api('GET', '/api/stats');
+    renderStats(stats);
+  } catch (e) {
+    hsl.innerHTML = `<div style="color:var(--muted);font-size:.875rem">${e.message}</div>`;
+  }
+}
+
+function renderStats({ habits: h, completions: comp, totalCheckins, perfectDays, longestStreak }) {
+  document.getElementById('statsGrid').innerHTML = [
+    { label: 'Active Habits',   value: h.length,      color: 'var(--accent)' },
+    { label: 'Total Check-ins', value: totalCheckins,  color: 'var(--green)' },
+    { label: 'Best Streak',     value: longestStreak + 'd', color: 'var(--yellow)' },
+    { label: 'Perfect Days',    value: perfectDays,    color: 'var(--accent2)' },
+  ].map(s => `<div class="stat-card"><div class="stat-value" style="color:${s.color}">${s.value}</div><div class="stat-label">${s.label}</div></div>`).join('');
+
+  renderHeatmap(comp);
+
+  const hsl = document.getElementById('habitStatsList');
+  if (!h.length) { hsl.innerHTML = '<div style="color:var(--muted);font-size:.875rem">No habits yet</div>'; return; }
+
+  const allDays = Object.keys(comp).length || 1;
+  hsl.innerHTML = h.map(habit => {
+    const pct = Math.round(habit.total / allDays * 100);
+    return `
+    <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:1.4rem">${habit.emoji}</span>
+      <div style="flex:1">
+        <div style="font-weight:600;font-size:.9rem">${habit.name}</div>
+        <div style="font-size:.78rem;color:var(--muted);margin-top:2px">${habit.total} completions · ${pct}% rate</div>
+      </div>
+      <div class="streak-badge">🔥 ${habit.streak}d</div>
+    </div>`;
+  }).join('');
+}
+
+function renderHeatmap(comp) {
+  const WEEKS = 16;
+  const cells = [];
+  const d = new Date();
+  const dayOfWeek = d.getDay();
+  d.setDate(d.getDate() - dayOfWeek + 6);
+
+  for (let i = WEEKS * 7 - 1; i >= 0; i--) {
+    const dd = new Date(d); dd.setDate(d.getDate() - i);
+    const key = `${dd.getFullYear()}-${String(dd.getMonth()+1).padStart(2,'0')}-${String(dd.getDate()).padStart(2,'0')}`;
+    const count = (comp[key] || []).length;
+    let level = 0;
+    if (count > 0) level = count >= 4 ? 4 : count >= 3 ? 3 : count >= 2 ? 2 : 1;
+    cells.push({ key, level, month: dd.getMonth() });
+  }
+
+  const heatmap = document.getElementById('heatmap');
+  heatmap.innerHTML = '';
+  for (let w = 0; w < WEEKS; w++) {
+    const col = document.createElement('div');
+    col.className = 'heatmap-col';
+    for (let day = 0; day < 7; day++) {
+      const cell = cells[w * 7 + day];
+      if (!cell) continue;
+      const el = document.createElement('div');
+      el.className = `heatmap-cell${cell.level ? ` l${cell.level}` : ''}`;
+      el.title = `${cell.key}: ${(comp[cell.key] || []).length} habits`;
+      col.appendChild(el);
+    }
+    heatmap.appendChild(col);
+  }
+
+  // Month labels
+  const months = document.getElementById('heatmapMonths');
+  months.innerHTML = '';
+  let lastMonth = -1;
+  cells.filter((_, i) => i % 7 === 0).forEach(cell => {
+    const span = document.createElement('span');
+    span.style.minWidth = '17px';
+    if (cell.month !== lastMonth) { span.textContent = MONTHS[cell.month]; lastMonth = cell.month; }
+    months.appendChild(span);
+  });
+}
+
+/* ══════════════════════════════════════════
+   PROFILE
+   ══════════════════════════════════════════ */
+
+function openProfileModal() {
+  const isSetup = !profile;
+  document.getElementById('profileModalTitle').textContent = isSetup ? 'Set Up Your Profile' : 'Edit Profile';
+  document.getElementById('profileCancelBtn').style.display = isSetup ? 'none' : '';
+  document.getElementById('profileName').value = profile?.name || '';
+  selectedColor = profile?.color || COLORS[0];
+
+  document.getElementById('colorPicker').innerHTML = COLORS.map(c =>
+    `<div class="color-opt${c === selectedColor ? ' selected' : ''}" style="background:${c}" onclick="selectColor(this,'${c}')"></div>`
+  ).join('');
+
+  openModal('profileModal');
+  setTimeout(() => document.getElementById('profileName').focus(), 200);
+}
+
+function selectColor(el, color) {
+  document.querySelectorAll('.color-opt').forEach(d => d.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedColor = color;
+}
+
+async function saveProfile() {
+  const name = document.getElementById('profileName').value.trim();
+  if (!name) { toast('Enter your name', 'error'); return; }
+
+  const btn = document.getElementById('saveProfileBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    profile = await fetch('/api/profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: getToken(), name, color: selectedColor })
+    }).then(r => r.json());
+
+    updateHeaderProfile();
+    closeModal('profileModal');
+    toast('Profile saved!');
+    loadToday();
+  } catch (e) { toast(e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'Save Profile'; }
+}
+
+function updateHeaderProfile() {
+  if (!profile) return;
+  document.getElementById('headerAvatar').textContent = profile.name.slice(0,1).toUpperCase();
+  document.getElementById('headerAvatar').style.background = profile.color;
+  document.getElementById('headerName').textContent = profile.name;
+  document.getElementById('myCode').textContent = profile.invite_code || '—';
+}
+
+/* ══════════════════════════════════════════
+   MODAL HELPERS
+   ══════════════════════════════════════════ */
+
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+});
+document.querySelectorAll('.modal-overlay').forEach(o => {
+  o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
+});
+
+/* ══════════════════════════════════════════
+   BOOT
+   ══════════════════════════════════════════ */
+
+document.getElementById('todayDate').textContent = dateLabel(todayStr());
+
+async function boot() {
+  try {
+    profile = await api('GET', '/api/profile');
+    updateHeaderProfile();
+    loadToday();
+  } catch (e) {
+    // New user — show profile setup
+    document.getElementById('habitsList').innerHTML = '<div class="empty"><div class="empty-icon">👋</div><h3>Welcome to StreakPact</h3><p>Set up your profile to get started</p></div>';
+    document.getElementById('progressText').textContent = '—';
+    setTimeout(() => openProfileModal(), 400);
+  }
+}
+
+boot();
+</script>
+</body>
+</html>
